@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.NewsMapper">
+
+
+    <sql id="Base_Column_List">
+        id,title,descr,category,content,img,time,read_count,type,user_id,status
+    </sql>
+
+    <select id="selectAll" resultType="com.example.entity.News">
+        select
+        <include refid="Base_Column_List" />
+        from news
+        <where>
+            <if test="id != null"> and id = #{id}</if>
+            <if test="title != null"> and title like concat('%', #{title}, '%')</if>
+            <if test="descr != null"> and descr like concat('%', #{descr}, '%')</if>
+            <if test="category != null"> and category like concat('%', #{category}, '%')</if>
+            <if test="content != null"> and content like concat('%', #{content}, '%')</if>
+            <if test="img != null"> and img like concat('%', #{img}, '%')</if>
+            <if test="time != null"> and time like concat('%', #{time}, '%')</if>
+            <if test="readCount != null"> and read_count = #{readCount}</if>
+            <if test="type != null"> and type like concat('%', #{type}, '%')</if>
+            <if test="userId != null"> and user_id = #{userId}</if>
+            <if test="status != null"> and status like concat('%', #{status}, '%')</if>
+        </where>
+        order by id desc
+    </select>
+
+    <select id="selectById" resultType="com.example.entity.News">
+        select
+        <include refid="Base_Column_List" />
+        from news
+        where id = #{id}
+    </select>
+
+    <delete id="deleteById">
+        delete from news
+        where  id = #{id}
+    </delete>
+
+    <insert id="insert" parameterType="com.example.entity.News" useGeneratedKeys="true" keyProperty="id">
+        insert into news
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="id != null">id,</if>
+            <if test="title != null">title,</if>
+            <if test="descr != null">descr,</if>
+            <if test="category != null">category,</if>
+            <if test="content != null">content,</if>
+            <if test="img != null">img,</if>
+            <if test="time != null">time,</if>
+            <if test="readCount != null">read_count,</if>
+            <if test="type != null">type,</if>
+            <if test="userId != null">user_id,</if>
+            <if test="status != null">status,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="id != null">#{id},</if>
+            <if test="title != null">#{title},</if>
+            <if test="descr != null">#{descr},</if>
+            <if test="category != null">#{category},</if>
+            <if test="content != null">#{content},</if>
+            <if test="img != null">#{img},</if>
+            <if test="time != null">#{time},</if>
+            <if test="readCount != null">#{readCount},</if>
+            <if test="type != null">#{type},</if>
+            <if test="userId != null">#{userId},</if>
+            <if test="status != null">#{status},</if>
+        </trim>
+    </insert>
+
+    <update id="updateById" parameterType="com.example.entity.News">
+        update news
+        <set>
+            <if test="title != null">
+                title = #{title},
+            </if>
+            <if test="descr != null">
+                descr = #{descr},
+            </if>
+            <if test="category != null">
+                category = #{category},
+            </if>
+            <if test="content != null">
+                content = #{content},
+            </if>
+            <if test="img != null">
+                img = #{img},
+            </if>
+            <if test="time != null">
+                time = #{time},
+            </if>
+            <if test="readCount != null">
+                read_count = #{readCount},
+            </if>
+            <if test="type != null">
+                type = #{type},
+            </if>
+            <if test="userId != null">
+                user_id = #{userId},
+            </if>
+            <if test="status != null">
+                status = #{status},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <select id="getNewsWithCollectCount" resultType="com.example.entity.News">
+        SELECT
+            n.id,
+            n.title,
+            n.descr,
+            n.category,
+            n.content,
+            n.img,
+            n.time,
+            n.read_count,
+            n.type,
+            n.user_id,
+            n.status,
+            COUNT(uc.news_id) AS collect_count
+        FROM
+            news n
+                LEFT JOIN
+            user_collect uc ON n.id = uc.news_id
+        GROUP BY
+            n.id
+    </select>
+
+<!--    <resultMap id="NewsResultMap" type="com.example.entity.News">-->
+<!--        <id column="news_id" property="id" />-->
+<!--        <result column="news_title" property="title" />-->
+<!--        <result column="collect_count" property="collectCount" />-->
+<!--        <result column="read_count" property="readCount" />-->
+<!--    </resultMap>-->
+    <select id="selectHotNewsList" resultType="com.example.entity.News">
+    <![CDATA[
+        WITH
+            -- 1. 用户7收藏的新闻ID
+            user_favorites AS (
+                SELECT
+                    news_id
+                FROM user_collect
+                WHERE user_id = 7
+            ),
+
+            -- 2. 用户7收藏的新闻类型及其权重
+            favorite_categories AS (
+                SELECT
+                    category,
+                    COUNT(*) AS category_count,
+                    COUNT(*) / (SELECT COUNT(*) FROM user_favorites) AS category_weight
+                FROM news
+                WHERE id IN (SELECT news_id FROM user_favorites)
+                GROUP BY category
+            ),
+
+            -- 3. 计算每篇新闻与用户收藏新闻的相似度总分
+            news_similarity_scores AS (
+                SELECT
+                    target_news.id AS news_id,
+                    target_news.title,
+                    target_news.descr,
+                    target_news.category,
+                    target_news.img,
+                    target_news.time,
+                    target_news.read_count,
+                    target_news.collect_count,
+                    SUM(COALESCE(ns.similarity, 0)) AS similarity_score,
+                    COALESCE((SELECT category_weight FROM favorite_categories WHERE category = target_news.category), 0) AS category_match_weight,
+                    target_news.read_count / NULLIF((SELECT MAX(read_count) FROM news), 0) AS normalized_read_count
+                FROM news target_news
+                         LEFT JOIN news_similarity ns
+                                   ON target_news.id = ns.news_id2
+                                       AND ns.news_id1 IN (SELECT news_id FROM user_favorites)
+                WHERE target_news.id NOT IN (SELECT news_id FROM user_favorites)
+                GROUP BY
+                    target_news.id,
+                    target_news.title,
+                    target_news.descr,
+                    target_news.category,
+                    target_news.img,
+                    target_news.time,
+                    target_news.read_count,
+                    target_news.collect_count
+            ),
+
+            -- 4. 最终排序
+            ranked_recommendations AS (
+                SELECT
+                    *,
+                    ROW_NUMBER() OVER (
+                    ORDER BY
+                        category_match_weight * 5.0 +
+                        similarity_score * 0.3 +
+                        normalized_read_count * 0.5
+                    DESC,
+                    similarity_score DESC
+                ) AS ranking
+                FROM news_similarity_scores
+            )
+
+            -- 5. 获取排序后的新闻列表
+        SELECT
+            news_id,
+            title,
+            read_count,
+            collect_count
+        FROM ranked_recommendations
+        WHERE ranking <= 8
+        ORDER BY ranking;
+        ]]>
+</select>
+</mapper>
